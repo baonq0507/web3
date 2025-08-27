@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, computed } from 'vue'
 import { useAuthStore } from './stores/auth'
+import AuthLoading from './components/AuthLoading.vue'
 
 const authStore = useAuthStore()
+
+const isLoading = computed(() => !authStore.isInitialized)
 
 onMounted(async () => {
   // Initialize authentication state
@@ -11,10 +14,17 @@ onMounted(async () => {
 </script>
 
 <template>
-  <router-view />
+  <div id="app">
+    <AuthLoading v-if="isLoading" />
+    <router-view v-else />
+  </div>
 </template>
 
 <style scoped>
+#app {
+  min-height: 100vh;
+}
+
 .logo {
   height: 6em;
   padding: 1.5em;

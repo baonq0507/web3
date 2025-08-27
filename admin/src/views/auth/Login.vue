@@ -37,6 +37,14 @@
           />
         </a-form-item>
 
+        <a-form-item>
+          <a-checkbox
+            v-model:checked="formData.rememberMe"
+          >
+            {{ $t('auth.rememberMe') }}
+          </a-checkbox>
+        </a-form-item>
+
         <a-form-item
           v-if="requiresTwoFactor"
           name="twoFactorCode"
@@ -109,6 +117,7 @@ const formData = reactive({
   email: '',
   password: '',
   twoFactorCode: '',
+  rememberMe: false,
 })
 
 const error = ref('')
@@ -154,7 +163,7 @@ const handleLogin = async () => {
       }
     } else {
       // Handle initial login
-      const result = await authStore.login(formData.email, formData.password)
+      const result = await authStore.login(formData.email, formData.password, undefined, formData.rememberMe)
       if (result.requiresTwoFactor) {
         // 2FA required, form will show 2FA input
         message.info(t('auth.twoFactorRequired'))

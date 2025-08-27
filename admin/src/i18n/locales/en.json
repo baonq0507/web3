@@ -30,6 +30,7 @@
     "email": "Email",
     "password": "Password",
     "twoFactorCode": "2FA Code",
+    "rememberMe": "Remember me",
     "loginSuccess": "Login successful",
     "loginError": "Login failed",
     "invalidCredentials": "Invalid email or password",

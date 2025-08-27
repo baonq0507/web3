@@ -4,7 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 
 // Create axios instance
 const apiClient: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api/admin/v1',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api/admin/v1',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -49,6 +49,7 @@ apiClient.interceptors.response.use(
         }
       } catch (refreshError) {
         // Refresh failed, redirect to login
+        console.error('Token refresh failed:', refreshError)
         authStore.logout()
         return Promise.reject(refreshError)
       }
@@ -59,6 +60,8 @@ apiClient.interceptors.response.use(
       console.error('Access forbidden')
     } else if (error.response?.status === 500) {
       console.error('Internal server error')
+    } else if (error.response?.status === 0) {
+      console.error('Network error - no response received')
     }
     
     return Promise.reject(error)

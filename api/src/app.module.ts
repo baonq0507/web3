@@ -14,6 +14,7 @@ import { WithdrawalsModule } from './withdrawals/withdrawals.module';
 import { AuditModule } from './audit/audit.module';
 import { ReportsModule } from './reports/reports.module';
 import { SymbolsModule } from './symbols/symbols.module';
+import { UploadModule } from './upload/upload.module';
 import { validationSchema } from './config/validation-schema';
 import { CorsMiddleware } from './middleware/cors.middleware';
 // TODO: Uncomment these modules when they are implemented
@@ -56,6 +57,7 @@ import { ThrottlerGuard } from '@nestjs/throttler';
     AuditModule,
     ReportsModule,
     SymbolsModule,
+    UploadModule,
     // TODO: Uncomment these modules when they are implemented
     // TradingModule,
     // OptionsModule,

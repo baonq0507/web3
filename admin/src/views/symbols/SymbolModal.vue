@@ -36,21 +36,45 @@
         </div>
 
         <div class="form-group">
-          <label for="image">URL Ảnh *</label>
-          <input
-            id="image"
-            v-model="form.image"
-            type="url"
-            required
-            placeholder="Nhập URL ảnh..."
-            :class="{ 'error': errors.image }"
-          />
-          <span v-if="errors.image" class="error-message">{{ errors.image }}</span>
+          <label for="image">Ảnh Symbol *</label>
           
-          <!-- Preview ảnh -->
-          <div v-if="form.image" class="image-preview">
-            <img :src="form.image" :alt="form.name || 'Symbol'" />
-            <span class="preview-label">Xem trước ảnh</span>
+          <!-- Upload ảnh -->
+          <div class="image-upload-container">
+            <div class="upload-area" @click="triggerFileInput" :class="{ 'has-image': form.image }">
+              <input
+                ref="fileInput"
+                type="file"
+                accept="image/*"
+                @change="handleFileChange"
+                style="display: none;"
+              />
+              
+              <div v-if="!form.image" class="upload-placeholder">
+                <UploadOutlined class="upload-icon" />
+                <p>Click để chọn ảnh hoặc kéo thả ảnh vào đây</p>
+                <p class="upload-hint">Hỗ trợ: JPG, PNG, GIF, WebP (tối đa 5MB)</p>
+              </div>
+              
+              <div v-else class="image-preview">
+                <img :src="form.image" :alt="form.name || 'Symbol'" />
+                <div class="image-overlay">
+                  <button type="button" @click.stop="removeImage" class="btn-remove">
+                    <DeleteOutlined />
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Progress bar -->
+            <div v-if="uploading" class="upload-progress">
+              <div class="progress-bar">
+                <div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div>
+              </div>
+              <span class="progress-text">{{ uploadProgress }}%</span>
+            </div>
+            
+            <!-- Error message -->
+            <span v-if="errors.image" class="error-message">{{ errors.image }}</span>
           </div>
         </div>
 
@@ -95,7 +119,8 @@
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue';
 import { symbolsApi, type Symbol, type CreateSymbolDto } from '@/api/symbols';
-import { CloseOutlined, LoadingOutlined } from '@ant-design/icons-vue';
+import { uploadApi } from '@/api/upload';
+import { CloseOutlined, LoadingOutlined, UploadOutlined, DeleteOutlined } from '@ant-design/icons-vue';
 
 // Props
 interface Props {
@@ -113,6 +138,9 @@ const emit = defineEmits<{
 
 // State
 const loading = ref(false);
+const uploading = ref(false);
+const uploadProgress = ref(0);
+const fileInput = ref<HTMLInputElement>();
 const errors = reactive({
   name: '',
   code: '',
@@ -128,6 +156,66 @@ const form = reactive<CreateSymbolDto>({
 });
 
 // Methods
+const triggerFileInput = () => {
+  fileInput.value?.click();
+};
+
+const handleFileChange = async (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  const file = target.files?.[0];
+  
+  if (!file) return;
+  
+  // Validate file type
+  if (!file.type.startsWith('image/')) {
+    errors.image = 'Chỉ chấp nhận file ảnh';
+    return;
+  }
+  
+  // Validate file size (5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    errors.image = 'Kích thước file không được vượt quá 5MB';
+    return;
+  }
+  
+  try {
+    uploading.value = true;
+    uploadProgress.value = 0;
+    
+    // Simulate progress
+    const progressInterval = setInterval(() => {
+      if (uploadProgress.value < 90) {
+        uploadProgress.value += 10;
+      }
+    }, 100);
+    
+    const response = await uploadApi.uploadImage(file);
+    
+    clearInterval(progressInterval);
+    uploadProgress.value = 100;
+    
+    form.image = response.data.url;
+    errors.image = '';
+    
+    // Reset file input
+    if (target) {
+      target.value = '';
+    }
+    
+  } catch (error: any) {
+    console.error('Upload error:', error);
+    errors.image = error.response?.data?.message || 'Lỗi upload ảnh';
+  } finally {
+    uploading.value = false;
+    uploadProgress.value = 0;
+  }
+};
+
+const removeImage = () => {
+  form.image = '';
+  errors.image = '';
+};
+
 const validateForm = (): boolean => {
   let isValid = true;
   
@@ -157,17 +245,10 @@ const validateForm = (): boolean => {
     isValid = false;
   }
 
-  // Validate image URL
+  // Validate image
   if (!form.image.trim()) {
-    errors.image = 'URL ảnh là bắt buộc';
+    errors.image = 'Ảnh symbol là bắt buộc';
     isValid = false;
-  } else {
-    try {
-      new URL(form.image);
-    } catch {
-      errors.image = 'URL ảnh không hợp lệ';
-      isValid = false;
-    }
   }
 
   return isValid;
@@ -364,23 +445,125 @@ onMounted(() => {
   margin-right: 10px;
 }
 
-.image-preview {
+.image-upload-container {
   margin-top: 10px;
+}
+
+.upload-area {
+  border: 2px dashed #ddd;
+  border-radius: 8px;
+  padding: 20px;
   text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-area:hover {
+  border-color: #007bff;
+  background-color: #f8f9fa;
+}
+
+.upload-area.has-image {
+  border-style: solid;
+  border-color: #007bff;
+  padding: 0;
+  overflow: hidden;
+}
+
+.upload-placeholder {
+  color: #666;
+}
+
+.upload-icon {
+  font-size: 32px;
+  color: #ccc;
+  margin-bottom: 10px;
+}
+
+.upload-hint {
+  font-size: 12px;
+  color: #999;
+  margin-top: 5px;
+}
+
+.image-preview {
+  position: relative;
+  width: 100%;
+  height: 100%;
 }
 
 .image-preview img {
-  max-width: 100px;
-  max-height: 100px;
-  border-radius: 5px;
-  border: 1px solid #ddd;
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 8px;
 }
 
-.preview-label {
-  display: block;
+.image-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.image-preview:hover .image-overlay {
+  opacity: 1;
+}
+
+.btn-remove {
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s ease;
+}
+
+.btn-remove:hover {
+  background: #c82333;
+}
+
+.upload-progress {
+  margin-top: 10px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background-color: #e9ecef;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: #007bff;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
   font-size: 12px;
   color: #666;
   margin-top: 5px;
+  display: block;
+  text-align: center;
 }
 
 .form-actions {

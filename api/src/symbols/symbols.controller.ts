@@ -37,8 +37,6 @@ export class SymbolsController {
       this.symbolsService.count(query)
     ]);
 
-    console.log(symbols);
-
     return {
       data: symbols,
       total,

@@ -31,7 +31,7 @@ export interface SymbolsResponse {
 
 export const symbolsApi = {
   // Lấy danh sách symbols với phân trang và tìm kiếm
-  getSymbols: (params?: {
+  getSymbols: async (params?: {
     page?: number;
     limit?: number;
     search?: string;
@@ -39,7 +39,8 @@ export const symbolsApi = {
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   }): Promise<SymbolsResponse> => {
-    return apiClient.get('/symbols', { params });
+    const response = await apiClient.get('/symbols', { params });
+    return response.data;
   },
 
   // Lấy danh sách symbols đang hoạt động

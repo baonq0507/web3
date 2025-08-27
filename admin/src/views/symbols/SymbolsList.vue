@@ -59,10 +59,10 @@
       <a-table
         v-if="safeSymbols.length > 0 || loading"
         :columns="columns"
-        :data-source="safeSymbols"
+        :data-source="symbols"
         :loading="loading"
         :pagination="false"
-        :row-key="(record) => record._id"
+        :row-key="(record: any) => record._id"
         size="middle"
       >
         <template #bodyCell="{ column, record }">
@@ -115,15 +115,19 @@
     </div>
 
     <!-- Pagination -->
-    <div class="pagination" v-if="totalPages > 1">
+    <div class="pagination" v-if="total > 0 && !loading">
       <a-pagination
         v-model:current="currentPage"
+        v-model:page-size="filters.limit"
         :total="total"
-        :page-size="filters.limit"
-        :show-size-changer="false"
+        :page-size-options="['10', '20', '50', '100']"
+        :show-size-changer="true"
+        :show-quick-jumper="true"
+        :show-total="(total: number, range: [number, number]) => `Hiển thị ${range[0]}-${range[1]} / ${total} symbols`"
         @change="changePage"
-        show-quick-jumper
-        show-total="(total, range) => `Trang ${range[0]}-${range[1]} / ${total} items`"
+        @show-size-change="handlePageSizeChange"
+        size="default"
+        class="custom-pagination"
       />
     </div>
 
@@ -219,9 +223,6 @@ const columns = [
   }
 ];
 
-// Computed
-const isModalOpen = computed(() => showCreateModal.value || showEditModal.value);
-
 // Đảm bảo symbols luôn là một mảng để tránh lỗi a-table
 const safeSymbols = computed(() => {
   return Array.isArray(symbols.value) ? symbols.value : [];
@@ -286,6 +287,12 @@ const toggleSortOrder = () => {
 
 const changePage = (page: number) => {
   currentPage.value = page;
+  loadSymbols();
+};
+
+const handlePageSizeChange = (current: number, size: number) => {
+  filters.limit = size;
+  currentPage.value = 1;
   loadSymbols();
 };
 
@@ -394,6 +401,18 @@ onMounted(() => {
   display: flex;
   justify-content: center;
   margin-top: 20px;
+}
+
+.custom-pagination {
+  background: white;
+  padding: 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.custom-pagination .ant-pagination-total-text {
+  color: #666;
+  font-weight: 500;
 }
 
 .empty-state {

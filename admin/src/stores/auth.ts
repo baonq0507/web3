@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { User } from '../types/user'
 import authApi from '../api/auth'
+import { AuthStorage } from '../utils/authStorage'
 
 export const useAuthStore = defineStore('auth', () => {
   // State
@@ -10,6 +11,9 @@ export const useAuthStore = defineStore('auth', () => {
   const refreshToken = ref<string | null>(null)
   const isLoading = ref(false)
   const requiresTwoFactor = ref(false)
+  const isInitialized = ref(false)
+  const rememberMe = ref(false)
+  const tokenExpiryTime = ref<number | null>(null)
 
   // Getters
   const isAuthenticated = computed(() => !!accessToken.value && !!user.value)
@@ -19,8 +23,47 @@ export const useAuthStore = defineStore('auth', () => {
     return roles.includes(user.value.role)
   })
 
+  // Auto-refresh token before expiry
+  let refreshTimer: number | null = null
+
+  const scheduleTokenRefresh = () => {
+    if (refreshTimer) {
+      clearTimeout(refreshTimer)
+    }
+
+    if (tokenExpiryTime.value && accessToken.value) {
+      const timeUntilExpiry = tokenExpiryTime.value - Date.now()
+      const refreshTime = Math.max(timeUntilExpiry - 5 * 60 * 1000, 0) // Refresh 5 minutes before expiry
+      
+      refreshTimer = setTimeout(async () => {
+        try {
+          await refreshAccessToken()
+        } catch (error) {
+          console.error('Auto-refresh failed:', error)
+          logout()
+        }
+      }, refreshTime)
+    }
+  }
+
+  const clearRefreshTimer = () => {
+    if (refreshTimer) {
+      clearTimeout(refreshTimer)
+      refreshTimer = null
+    }
+  }
+
+  // Watch for token changes to schedule refresh
+  watch([accessToken, tokenExpiryTime], () => {
+    if (accessToken.value && tokenExpiryTime.value) {
+      scheduleTokenRefresh()
+    } else {
+      clearRefreshTimer()
+    }
+  })
+
   // Actions
-  const login = async (email: string, password: string, twoFactorCode?: string) => {
+  const login = async (email: string, password: string, twoFactorCode?: string, remember?: boolean) => {
     try {
       isLoading.value = true
       
@@ -40,10 +83,19 @@ export const useAuthStore = defineStore('auth', () => {
       refreshToken.value = response.refreshToken
       user.value = response.user as User
       requiresTwoFactor.value = false
+      rememberMe.value = remember || false
 
-      // Store tokens in localStorage
-      localStorage.setItem('accessToken', response.accessToken)
-      localStorage.setItem('refreshToken', response.refreshToken)
+      // Calculate token expiry time (assuming expiresIn is in seconds)
+      tokenExpiryTime.value = Date.now() + (response.expiresIn * 1000)
+
+      // Store data using AuthStorage utility
+      AuthStorage.saveAuthData({
+        accessToken: response.accessToken,
+        refreshToken: response.refreshToken,
+        userData: response.user,
+        tokenExpiry: tokenExpiryTime.value,
+        rememberMe: remember || false,
+      })
 
       return { success: true, user: response.user }
     } catch (error: any) {
@@ -69,9 +121,17 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = response.user as User
       requiresTwoFactor.value = false
 
-      // Store tokens in localStorage
-      localStorage.setItem('accessToken', response.accessToken)
-      localStorage.setItem('refreshToken', response.refreshToken)
+      // Calculate token expiry time
+      tokenExpiryTime.value = Date.now() + (response.expiresIn * 1000)
+
+      // Store using AuthStorage utility
+      AuthStorage.saveAuthData({
+        accessToken: response.accessToken,
+        refreshToken: response.refreshToken,
+        userData: response.user,
+        tokenExpiry: tokenExpiryTime.value,
+        rememberMe: rememberMe.value,
+      })
 
       return { success: true, user: response.user }
     } catch (error: any) {
@@ -95,10 +155,10 @@ export const useAuthStore = defineStore('auth', () => {
       
       accessToken.value = response.accessToken
       refreshToken.value = response.refreshToken
+      tokenExpiryTime.value = Date.now() + (response.expiresIn * 1000)
 
-      // Update localStorage
-      localStorage.setItem('accessToken', response.accessToken)
-      localStorage.setItem('refreshToken', response.refreshToken)
+      // Update storage using AuthStorage utility
+      AuthStorage.updateTokens(response.accessToken, response.refreshToken, response.expiresIn)
 
       return true
     } catch (error) {
@@ -121,10 +181,15 @@ export const useAuthStore = defineStore('auth', () => {
       accessToken.value = null
       refreshToken.value = null
       requiresTwoFactor.value = false
+      isInitialized.value = false
+      rememberMe.value = false
+      tokenExpiryTime.value = null
 
-      // Clear localStorage
-      localStorage.removeItem('accessToken')
-      localStorage.removeItem('refreshToken')
+      // Clear timers
+      clearRefreshTimer()
+
+      // Clear storage using AuthStorage utility
+      AuthStorage.clearAuthData()
     }
   }
 
@@ -140,21 +205,50 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   const initializeAuth = async () => {
-    const storedAccessToken = localStorage.getItem('accessToken')
-    const storedRefreshToken = localStorage.getItem('refreshToken')
+    try {
+      // Get stored auth data using AuthStorage utility
+      const storedData = AuthStorage.getAuthData()
 
-    if (storedAccessToken && storedRefreshToken) {
-      accessToken.value = storedAccessToken
-      refreshToken.value = storedRefreshToken
-      
-      try {
-        await getProfile()
-      } catch (error) {
-        // If profile fetch fails, try to refresh token
-        if (!(await refreshAccessToken())) {
-          logout()
+      if (storedData) {
+        // Check if token is expired
+        const isExpired = Date.now() >= storedData.tokenExpiry
+
+        if (isExpired) {
+          // Token expired, try to refresh
+          accessToken.value = storedData.accessToken
+          refreshToken.value = storedData.refreshToken
+          rememberMe.value = storedData.rememberMe
+          
+          const refreshed = await refreshAccessToken()
+          if (!refreshed) {
+            logout()
+            isInitialized.value = true
+            return
+          }
+        } else {
+          // Token still valid
+          accessToken.value = storedData.accessToken
+          refreshToken.value = storedData.refreshToken
+          user.value = storedData.userData
+          rememberMe.value = storedData.rememberMe
+          tokenExpiryTime.value = storedData.tokenExpiry
+        }
+
+        // Verify user profile is still valid
+        try {
+          await getProfile()
+        } catch (error) {
+          // If profile fetch fails, try to refresh token
+          if (!(await refreshAccessToken())) {
+            logout()
+          }
         }
       }
+    } catch (error) {
+      console.error('Auth initialization error:', error)
+      logout()
+    } finally {
+      isInitialized.value = true
     }
   }
 
@@ -169,6 +263,9 @@ export const useAuthStore = defineStore('auth', () => {
     refreshToken,
     isLoading,
     requiresTwoFactor,
+    isInitialized,
+    rememberMe,
+    tokenExpiryTime,
     
     // Getters
     isAuthenticated,

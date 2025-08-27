@@ -30,6 +30,7 @@
     "email": "Email",
     "password": "Mật khẩu",
     "twoFactorCode": "Mã 2FA",
+    "rememberMe": "Ghi nhớ đăng nhập",
     "loginSuccess": "Đăng nhập thành công",
     "loginError": "Đăng nhập thất bại",
     "invalidCredentials": "Email hoặc mật khẩu không đúng",
